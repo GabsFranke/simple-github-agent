@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  github-mcp-server:
+    build:
+      context: ./services/github-mcp-server
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      - GITHUB_APP_ID=${GITHUB_APP_ID}
+      - GITHUB_PRIVATE_KEY=${GITHUB_PRIVATE_KEY}
+      - GITHUB_INSTALLATION_ID=${GITHUB_INSTALLATION_ID}
+    stdin_open: true
+    tty: true
+
+  webhook:
+    build:
+      context: ./services/webhook
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      - PORT=8080
+      - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}
+
+  agent-worker:
+    build:
+      context: ./services/agent-worker
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      - GITHUB_APP_ID=${GITHUB_APP_ID}
+      - GITHUB_PRIVATE_KEY=${GITHUB_PRIVATE_KEY}
+      - GITHUB_INSTALLATION_ID=${GITHUB_INSTALLATION_ID}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+    depends_on:
+      - github-mcp-server
