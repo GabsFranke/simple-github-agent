@@ -8,17 +8,17 @@ from typing import Dict, Any
 from fastapi import FastAPI, Request, HTTPException, Response
 from pydantic import BaseModel
 
-# Add agent-worker to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'agent-worker'))
-from worker import AgentWorker
+# Add shared to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+from shared.queue import get_queue
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="SimpleGitHubAgent Webhook Service")
 
-# Initialize worker
-worker = AgentWorker()
+# Initialize queue
+queue = get_queue()
 
 
 class WebhookPayload(BaseModel):
@@ -103,9 +103,9 @@ async def webhook(request: Request):
                 logger.info(f"Agent command detected: {command}")
                 logger.info(f"Processing request for {request_data['repository']} issue #{request_data['issue_number']}")
                 
-                # Process request (in background to respond quickly)
+                # Publish to queue (async processing)
                 import asyncio
-                asyncio.create_task(worker.process_request_async(request_data))
+                asyncio.create_task(queue.publish(request_data))
                 
                 return {"status": "accepted", "message": "Agent is processing your request"}
         

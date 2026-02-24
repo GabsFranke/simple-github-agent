@@ -1,4 +1,4 @@
-"""Agent worker that processes GitHub requests."""
+"""Agent worker that processes GitHub requests from message queue."""
 import os
 import json
 import logging
@@ -9,9 +9,11 @@ from github import Github
 from google.adk.runners import InMemoryRunner
 from google.genai import types
 
-# Add github-mcp-server to path for auth
+# Add paths
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'github-mcp-server'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from auth import GitHubAppAuth
+from shared.queue import get_queue
 
 from agent import root_agent
 
@@ -127,20 +129,25 @@ Issue: #{issue_number}
 
 
 def main():
-    """Main entry point for local testing."""
-    # Load test request
-    test_request = {
-        "repository": os.getenv("TEST_REPO", "owner/repo"),
-        "issue_number": int(os.getenv("TEST_ISSUE", "1")),
-        "command": os.getenv("TEST_COMMAND", "/agent help with this"),
-        "user": "testuser"
-    }
-    
-    logger.info("Starting agent worker (local mode)")
-    logger.info(f"Test request: {test_request}")
+    """Main entry point - subscribe to queue and process messages."""
+    logger.info("Starting agent worker (queue mode)")
     
     worker = AgentWorker()
-    worker.process_request(test_request)
+    queue = get_queue()
+    
+    async def process_message(message: Dict[str, Any]):
+        """Process a message from the queue."""
+        await worker.process_request_async(message)
+    
+    async def run():
+        try:
+            await queue.subscribe(process_message)
+        except KeyboardInterrupt:
+            logger.info("Shutting down...")
+        finally:
+            await queue.close()
+    
+    asyncio.run(run())
 
 
 if __name__ == "__main__":

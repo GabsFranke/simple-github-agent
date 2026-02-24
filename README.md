@@ -6,63 +6,62 @@ AI-powered GitHub agent that creates pull requests from issues using Gemini and 
 
 ### Prerequisites
 
-- Python 3.11+
+- Docker & Docker Compose (recommended) OR Python 3.11+
 - GitHub App (create at https://github.com/settings/apps/new)
 - Google AI API Key (get from https://aistudio.google.com/apikey)
 - ngrok (for local testing) or cloud hosting
 
 ### Setup
 
-1. **Install dependencies for each service:**
+1. **Configure environment:**
 
-```powershell
-# GitHub MCP Server
-cd services/github-mcp-server
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-cd ../..
-
-# Agent Worker  
-cd services/agent-worker
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-cd ../..
-
-# Webhook Service
-cd services/webhook
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-cd ../..
-```
-
-2. **Configure environment:**
-
-```powershell
+```bash
 # Copy example config
 cp .env.example .env
 
 # Edit .env with your credentials:
 # - GITHUB_APP_ID, GITHUB_CLIENT_ID, GITHUB_INSTALLATION_ID
-# - GITHUB_PRIVATE_KEY (from your GitHub App)
+# - GITHUB_PRIVATE_KEY_PATH (path to your .pem file)
 # - GOOGLE_API_KEY (from Google AI Studio)
+# - QUEUE_TYPE=redis (for Docker) or pubsub (for cloud)
 ```
 
-3. **Run locally:**
+2. **Run with Docker (recommended):**
+
+```bash
+# Start all services
+docker-compose up --build -d
+
+# View logs
+docker-compose logs -f
+
+# Stop services
+docker-compose down
+```
+
+3. **Expose webhook with ngrok:**
+
+```bash
+ngrok http 8080
+```
+
+Update your GitHub App webhook URL with the ngrok URL.
+
+4. **Manual setup (without Docker):**
 
 See [START.md](START.md) for detailed instructions.
 
 ## Architecture
 
 ```
-GitHub Issue → Webhook → Pub/Sub → Agent Worker → Vertex AI Agent
-                                                         ↓
-                                                   GitHub MCP Server
-                                                         ↓
-                                                    GitHub API
+GitHub Issue → Webhook → Message Queue → Agent Worker → Gemini Agent
+                            (Redis)                           ↓
+                                                        GitHub MCP Server
+                                                              ↓
+                                                         GitHub API
 ```
+
+The system uses a message queue architecture that works for both self-hosted (Redis) and cloud (Google Pub/Sub) deployments.
 
 ## Components
 
@@ -78,10 +77,14 @@ Provides GitHub API access through Model Context Protocol with permission manage
 - `get_issue` - Get issue details
 
 ### 2. Agent Worker
-Processes requests and runs the Vertex AI agent with GitHub tools.
+Subscribes to message queue and runs the Gemini agent with GitHub tools.
 
 ### 3. Webhook Service
-Receives GitHub webhooks and triggers agent processing.
+Receives GitHub webhooks and publishes to message queue.
+
+### 4. Message Queue
+- Redis for self-hosted/development
+- Google Pub/Sub for cloud production
 
 ## Usage
 
@@ -97,6 +100,15 @@ Receives GitHub webhooks and triggers agent processing.
 ## Configuration
 
 See `.env.example` for all configuration options.
+
+### Environment Variables
+
+- `QUEUE_TYPE`: `redis` (self-hosted) or `pubsub` (cloud)
+- `REDIS_HOST`: Redis host (default: localhost)
+- `REDIS_PORT`: Redis port (default: 6379)
+- `PUBSUB_PROJECT_ID`: Google Cloud project ID (for cloud deployment)
+- `PUBSUB_TOPIC`: Pub/Sub topic name (for cloud deployment)
+- `PUBSUB_SUBSCRIPTION`: Pub/Sub subscription name (for cloud deployment)
 
 ### GitHub App Setup
 
@@ -116,38 +128,45 @@ See `.env.example` for all configuration options.
 
 ### Project Structure
 ```
-vertex-github-agent/
+SimpleGitHubAgent/
 ├── services/
 │   ├── github-mcp-server/    # MCP server for GitHub API
-│   ├── agent-worker/         # Vertex AI agent worker
+│   ├── agent-worker/         # Gemini agent worker
 │   └── webhook/              # Webhook receiver
-├── ARCHITECTURE.md           # Complete system design
-├── PROGRESS.md              # Development tracker
-├── GETTING_STARTED.md       # Detailed setup guide
-├── PROJECT_SUMMARY.md       # Project overview
-└── test_local.py            # Local testing script
+├── shared/
+│   └── queue.py             # Message queue abstraction
+├── docker-compose.yml       # Docker Compose config
+├── ARCHITECTURE.md          # Complete system design
+├── PROGRESS.md             # Development tracker
+└── START.md                # Detailed setup guide
 ```
 
 ### Documentation
 
-- **[GETTING_STARTED.md](GETTING_STARTED.md)** - Step-by-step setup guide
+- **[START.md](START.md)** - Step-by-step setup guide
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - Complete technical architecture
-- **[PROJECT_SUMMARY.md](PROJECT_SUMMARY.md)** - Project overview and status
 - **[PROGRESS.md](PROGRESS.md)** - Development checklist
 
 ### Testing
 
-```powershell
+With Docker:
+```bash
+# View all logs
+docker-compose logs -f
+
+# View specific service
+docker-compose logs -f webhook
+docker-compose logs -f worker
+```
+
+Without Docker (manual):
+```bash
 # Test webhook service
 cd services/webhook
-.\venv\Scripts\Activate.ps1
 python main.py
 
-# Test agent worker (requires TEST_REPO and TEST_ISSUE env vars)
+# Test agent worker
 cd services/agent-worker
-.\venv\Scripts\Activate.ps1
-$env:TEST_REPO="owner/repo"
-$env:TEST_ISSUE="1"
 python worker.py
 ```
 
@@ -155,7 +174,14 @@ Note: The MCP server starts automatically when the agent needs it - no need to r
 
 ## Deployment
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed deployment instructions.
+### Self-Hosted (Development)
+Uses Docker Compose with Redis:
+```bash
+docker-compose up -d
+```
+
+### Cloud (Production)
+Deploy to Google Cloud Run with Pub/Sub. See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed instructions.
 
 ## Progress
 

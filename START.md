@@ -1,53 +1,114 @@
 # How to Start SimpleGitHubAgent
 
-## Quick Start
+## Quick Start with Docker Compose (Recommended)
 
-### Terminal 1: Start Webhook Service
+### Prerequisites
+- Docker & Docker Compose
+- ngrok (for webhooks)
+- GitHub App configured
+- Google AI API Key
+
+### Start Everything
+
+```powershell
+# 1. Configure .env
+cp .env.example .env
+# Edit .env with your credentials
+
+# 2. Start all services
+docker-compose up -d
+
+# 3. Start ngrok (in another terminal)
+ngrok http 8080
+
+# 4. Update GitHub App webhook URL
+# Go to https://github.com/settings/apps/your-app
+# Set webhook URL to: https://your-ngrok-url.ngrok-free.dev/webhook
+```
+
+That's it! The agent is now running and will respond to `/agent` commands.
+
+### View Logs
+```powershell
+docker-compose logs -f worker    # Agent worker logs
+docker-compose logs -f webhook   # Webhook logs
+docker-compose logs -f redis     # Redis logs
+```
+
+### Stop Everything
+```powershell
+docker-compose down
+```
+
+---
+
+## Manual Start (Development)
+
+### Terminal 1: Start Redis
+```powershell
+docker run -p 6379:6379 redis:7-alpine
+```
+
+### Terminal 2: Start Webhook Service
 ```powershell
 cd services/webhook
 .\venv\Scripts\Activate.ps1
 python main.py
 ```
 
-### Terminal 2: Start ngrok
+### Terminal 3: Start Worker
+```powershell
+cd services/agent-worker
+.\venv\Scripts\Activate.ps1
+python worker.py
+```
+
+### Terminal 4: Start ngrok
 ```powershell
 ngrok http 8080
 ```
 
-Then:
-1. Copy the ngrok URL (e.g., `https://xxx.ngrok-free.dev`)
-2. Go to https://github.com/settings/apps/simplegithubagent
-3. Update Webhook URL to: `https://xxx.ngrok-free.dev/webhook`
-4. Save
+Then update GitHub App webhook URL as above.
 
-### Test It
+---
+
+## What's Running
+
+- **Redis** (port 6379): Message queue
+- **Webhook Service** (port 8080): Receives GitHub webhooks
+- **Worker**: Processes agent requests from queue
+- **ngrok**: Exposes webhook to internet
+- **MCP Server**: Starts automatically when agent needs GitHub access
+
+## Testing
+
 1. Create an issue in your repo
 2. Comment: `/agent help with this`
 3. Watch the agent work! 🤖
 
-## What's Running
-
-- **Webhook Service** (port 8080): Receives GitHub webhooks
-- **ngrok**: Exposes your local webhook to the internet
-- **Agent Worker**: Runs automatically when webhook receives a command
-- **MCP Server**: Starts automatically when agent needs GitHub access
-
-## Stopping
-
-Press `Ctrl+C` in each terminal to stop the services.
+Check logs to see what's happening:
+- Webhook receives command → publishes to Redis
+- Worker picks up from Redis → runs agent
+- Agent uses MCP → creates branch/PR
+- Worker posts result back to GitHub
 
 ## Troubleshooting
 
+**Services won't start?**
+- Check `.env` has all required values
+- Ensure Redis is running
+- Check Docker is running
+
 **Webhook not receiving events?**
-- Check ngrok is running
-- Verify webhook URL in GitHub App settings
-- Check webhook service logs
+- Verify ngrok is running
+- Check webhook URL in GitHub App settings
+- Look at webhook service logs
 
 **Agent not responding?**
-- Check `.env` has `GOOGLE_API_KEY`
-- Check `.env` has GitHub credentials
-- Look at webhook service terminal for errors
+- Check worker logs: `docker-compose logs -f worker`
+- Verify `GOOGLE_API_KEY` is set
+- Check Redis is accessible
 
 **Can't post comments?**
-- Set `GITHUB_TOKEN` in `.env` (personal access token)
-- Or the agent will try to use GitHub App auth
+- Verify GitHub App has correct permissions
+- Check `GITHUB_APP_ID` and `GITHUB_INSTALLATION_ID` are correct
